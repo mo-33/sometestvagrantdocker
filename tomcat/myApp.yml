@@ -1,0 +1,79 @@
+---
+- hosts: all
+  become: true
+  tasks:
+  - name: Install packages that allow apt to be used over HTTPS
+    apt:
+      name: "{{ packages }}"
+      state: present
+      update_cache: yes
+    vars:
+      packages:
+      - apt-transport-https
+      - ca-certificates
+      - curl
+      - gnupg-agent
+      - software-properties-common
+
+  - name: Add an apt signing key for Docker
+    apt_key:
+      url: https://download.docker.com/linux/ubuntu/gpg
+      state: present
+
+  - name: Add apt repository for stable version
+    apt_repository:
+      repo: deb [arch=amd64] https://download.docker.com/linux/ubuntu xenial stable
+      state: present
+
+  - name: Install docker and its dependecies
+    apt: 
+      name: "{{ packages }}"
+      state: present
+      update_cache: yes
+    vars:
+      packages:
+      - docker-ce 
+      - docker-ce-cli 
+      - containerd.io
+    notify:
+      - docker status
+
+  - name: Add vagrant user to docker group
+    user:
+      name: vagrant
+      group: docker
+
+  - name: Install pip
+    apt:
+      name: python-pip
+      state: present
+      update_cache: yes
+
+  - name: Install ansible pip dependecies
+    pip:
+      name: "{{ modules }}"
+    vars:
+      modules:
+      - requests
+      - docker
+
+  - name: Deploying image ...
+    synchronize:
+      dest: /tmp/archive.tgz
+      src: /tmp/docker/myimage.tgz
+
+  - name: Extracting myApps image
+    docker_image:
+      name: localhost:8888/myapp
+      load_path: /tmp/archive.tgz
+      source: load      
+
+  - name: Starting up myApp service
+    docker_container:
+      name: myrunningapp
+      image: myapp:1.0.0
+      log_driver: syslog
+  
+  handlers:
+    - name: docker status
+      service: name=docker state=started
